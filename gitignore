@@ -1,0 +1,11 @@
+.env
+venv
+.vscode
+.pycharm
+__pycache__
+.idea
+.ipynb_checkpoints
+models.config
+PlantVillage/
+dataset/
+images/

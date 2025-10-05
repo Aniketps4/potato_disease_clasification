@@ -1,0 +1,16 @@
+tensorflow==2.5.0
+fastapi
+uvicorn
+python-multipart
+pillow
+tensorflow-serving-api==2.5.0
+matplotlib
+numpy
+streamlit
+tensorflow
+pillow
+numpy
+langchain
+langchain-google-genai
+google-generativeai
+python-dotenv
