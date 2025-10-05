@@ -6,42 +6,43 @@ import numpy as np
 from PIL import Image
 import os
 from dotenv import load_dotenv
-import google.generativeai as genai
-import asyncio
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.prompts import PromptTemplate
+from langchain.chains import LLMChain
 
-# ======================================
-# 🌐 ENVIRONMENT SETUP
-# ======================================
-# Load .env file
-load_dotenv()
+# ==============================
+# ⚠️ MUST BE FIRST STREAMLIT COMMAND
+# ==============================
+st.set_page_config(page_title="Potato Disease Detection", page_icon="🥔", layout="wide")
 
-# Handle async loop issues (important for Streamlit Cloud)
-try:
-    asyncio.get_event_loop()
-except RuntimeError:
-    asyncio.set_event_loop(asyncio.new_event_loop())
+# ==============================
+# Load environment variables
+# ==============================
+load_dotenv()  # loads GOOGLE_API_KEY
 
-# Define BASE_DIR for relative paths
+# ==============================
+# Directories & Paths
+# ==============================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "models", "potatoes.h5")
 
-# Configure Gemini API
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-if GOOGLE_API_KEY:
-    genai.configure(api_key=GOOGLE_API_KEY)
-else:
-    st.warning("⚠️ GOOGLE_API_KEY is not set. LLM advice will not work.")
+# ==============================
+# App Title
+# ==============================
+st.title("🥔 AI Aloo Kisan Mitra / एआई आलू किसान मित्र")
+st.markdown("Upload a potato leaf image to detect diseases and get expert advice powered by Gemini LLM.")
+st.markdown("रोगों का पता लगाने और जेमिनी एलएलएम द्वारा संचालित विशेषज्ञ सलाह प्राप्त करने के लिए आलू के पत्ते की छवि अपलोड करें।")
 
-# ======================================
-# 🧠 LOAD TENSORFLOW MODEL
-# ======================================
+# ==============================
+# Load Potato Disease Model
+# ==============================
 @st.cache_resource
 def load_potato_model():
-    model_path = os.path.join(BASE_DIR, "models", "potatoes.h5")
-    if not os.path.exists(model_path):
-        st.error(f"❌ Model file not found at {model_path}")
+    if not os.path.exists(MODEL_PATH):
+        st.error(f"Model file not found at {MODEL_PATH}")
         return None
     try:
-        model = load_model(model_path)
+        model = load_model(MODEL_PATH)
         return model
     except Exception as e:
         st.error(f"Error loading model: {e}")
@@ -49,116 +50,138 @@ def load_potato_model():
 
 model = load_potato_model()
 
-# Class names must match your training labels
-CLASS_NAMES = ['Potato___Early_blight', 'Potato___Late_blight', 'Potato___healthy']
+# Class names
+class_names = ['Potato___Early_blight', 'Potato___Late_blight', 'Potato___healthy']
 
-# ======================================
-# 🖼 IMAGE PREPROCESSING
-# ======================================
+# ==============================
+# Image Preprocessing
+# ==============================
 def preprocess_image(image: Image.Image):
-    img = image.resize((256, 256))  # match model input size
+    img = image.resize((256, 256))
     img_array = img_to_array(img)
     img_array = np.expand_dims(img_array, axis=0)
-    img_array = img_array / 255.0
+    img_array /= 255.0
     return img_array
 
-# ======================================
-# 🔬 PREDICTION FUNCTION
-# ======================================
+# ==============================
+# Prediction
+# ==============================
 def predict_disease(image: Image.Image):
     if model is None:
         return None, None
     processed_image = preprocess_image(image)
     prediction = model.predict(processed_image)
     predicted_class_idx = np.argmax(prediction[0])
-    predicted_class = CLASS_NAMES[predicted_class_idx]
+    predicted_class = class_names[predicted_class_idx]
     confidence = int(np.max(prediction[0]) * 100)
     return predicted_class, confidence
 
-# ======================================
-# 🧠 GEMINI RESPONSE
-# ======================================
-def generate_gemini_advice(disease_name: str):
-    if not GOOGLE_API_KEY:
-        return "⚠️ Gemini API key not configured."
-
-    model_gemini = genai.GenerativeModel("gemini-1.5-flash")
-
-    prompt = f"""
-    You are an expert plant pathologist specializing in potato diseases.
-    Based on the detected disease: {disease_name}, provide clear, actionable, concise advice to a farmer in a farmer-friendly format.
-
-    STRICTLY structure your response EXACTLY as follows, with BOTH English and Hindi sections.
-    Use bullet points, emojis (✅ for Preventive, 🛠 for Manage/Overcome, 🌱 for Care/Further Steps),
-    and keep each section to 2-3 short sentences max. Be empathetic and simple.
-
-    🧪 Predicted Disease: {disease_name}
-
-    🌿 Farmer Guidance (English + Hindi) 🌿
-
-    **English:**
-    ✅ **Preventive:** [1-2 concise bullet points on prevention]
-    🛠 **Overcome:** [1-2 concise bullet points on immediate management]
-    🌱 **Care:** [1-2 concise bullet points on monitoring/further steps]
-
-    **हिन्दी (Hindi):**
-    ✅ **रोकथाम:** [1-2 संक्षिप्त बुलेट पॉइंट्स रोकथाम पर]
-    🛠 **समाधान:** [1-2 संक्षिप्त बुलेट पॉइंट्स तत्काल प्रबंधन पर]
-    🌱 **देखभाल:** [1-2 संक्षिप्त बुलेट पॉइंट्स निगरानी/आगे के कदमों पर]
-
-    Translate accurately to Hindi using Devanagari script. Do NOT add extra text or deviate from this format.
-    """
+# ==============================
+# Gemini LLM Setup
+# ==============================
+@st.cache_resource
+def setup_llm_chain():
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        st.error("Please set your GOOGLE_API_KEY in the .env file.")
+        return None
 
     try:
-        response = model_gemini.generate_content(prompt)
-        return response.text
+        llm = ChatGoogleGenerativeAI(
+            model="models/gemini-2.0-flash",  # Or gemini-pro
+            google_api_key=api_key,
+            temperature=0.1
+        )
+
+        prompt_template = """
+        You are an expert plant pathologist specializing in potato diseases. 
+        Based on the detected disease: {disease}, provide clear, actionable, concise advice to a farmer in a farmer-friendly format.
+
+        STRICTLY structure your response EXACTLY as follows, with BOTH English and Hindi sections. Use bullet points, emojis (✅ for Preventive, 🛠 for Manage/Overcome, 🌱 for Care/Further Steps), and keep each section to 2-3 short sentences max. Be empathetic and simple.
+
+        🧪 Predicted Disease: {disease}
+
+        🌿 Farmer Guidance (English + Hindi) 🌿
+
+        **English:**
+        ✅ **Preventive:** [1-2 concise bullet points on prevention]
+        🛠 **Overcome:** [1-2 concise bullet points on immediate management]
+        🌱 **Care:** [1-2 concise bullet points on monitoring/further steps]
+
+        **हिन्दी (Hindi):**
+        ✅ **रोकथाम:** [1-2 संक्षिप्त बुलेट पॉइंट्स रोकथाम पर]
+        🛠 **समाधान:** [1-2 संक्षिप्त बुलेट पॉइंट्स तत्काल प्रबंधन पर]
+        🌱 **देखभाल:** [1-2 संक्षिप्त बुलेट पॉइंट्स निगरानी/आगे के कदमों पर]
+
+        Translate accurately to Hindi using Devanagari script. Do NOT add extra text or deviate from this format.
+        """
+
+        prompt = PromptTemplate(
+            input_variables=["disease"],
+            template=prompt_template
+        )
+
+        chain = LLMChain(llm=llm, prompt=prompt)
+        return chain
+
     except Exception as e:
-        return f"❌ Error generating Gemini advice: {e}"
+        st.error(f"Error initializing Gemini LLM: {e}")
+        return None
 
-# ======================================
-# 🟩 STREAMLIT UI
-# ======================================
-st.set_page_config(page_title="Potato Disease Detection", page_icon="🥔", layout="wide")
+# ==============================
+# Main App Logic
+# ==============================
+def main():
+    chain = setup_llm_chain()
+    if chain is None:
+        st.warning("Gemini LLM is not configured. You can still upload an image for prediction.")
+    
+    uploaded_file = st.file_uploader("Choose a potato leaf image...", type=["jpg", "jpeg", "png"])
+    if uploaded_file is not None:
+        image = Image.open(uploaded_file)
+        st.image(image, caption="Uploaded Image", use_container_width=True)
 
-st.title("🥔 AI Aloo Kisan Mitra / एआई आलू किसान मित्र")
-st.markdown("Upload a potato leaf image to detect diseases and get expert advice powered by Gemini LLM.")
-st.markdown("रोगों का पता लगाने और जेमिनी एलएलएम द्वारा संचालित विशेषज्ञ सलाह प्राप्त करने के लिए आलू के पत्ते की छवि अपलोड करें।")
+        with st.spinner("Detecting disease..."):
+            predicted_class, confidence = predict_disease(image)
 
-uploaded_file = st.file_uploader("📤 Upload Potato Leaf Image", type=["jpg", "jpeg", "png"])
+        if predicted_class:
+            st.success(f"**Predicted Disease**: {predicted_class.replace('Potato___', '')}")
+            st.info(f"**Confidence**: {confidence}%")
 
-if uploaded_file is not None:
-    image = Image.open(uploaded_file)
-    st.image(image, caption="🖼 Uploaded Image", use_container_width=True)
+            if chain:
+                with st.spinner("Generating expert advice..."):
+                    try:
+                        disease_name = predicted_class.replace('Potato___', '')
+                        response = chain.run(disease=disease_name)
+                        st.markdown("### 🩺 Advice from AI kisan mitra / AI किसान मित्र की सलाह")
+                        st.markdown(response)
+                    except Exception as e:
+                        st.error(f"Error generating advice: {e}")
+        else:
+            st.warning("Prediction failed. Please try another image.")
 
-    with st.spinner("🔍 Detecting disease..."):
-        predicted_class, confidence = predict_disease(image)
-
-    if predicted_class:
-        disease_name = predicted_class.replace("Potato___", "")
-        st.success(f"**Predicted Disease:** {disease_name}")
-        st.info(f"**Model Confidence:** {confidence}%")
-
-        with st.spinner("🧠 Generating expert farmer advice..."):
-            advice = generate_gemini_advice(disease_name)
-            st.markdown("### 🩺 AI Kisan Mitra Advice / किसान मित्र की सलाह")
-            st.markdown(advice)
-    else:
-        st.warning("⚠️ Prediction failed. Please try another image.")
-
-# ======================================
-# 📌 SIDEBAR
-# ======================================
+# ==============================
+# Sidebar
+# ==============================
 with st.sidebar:
-    st.header("📌 Instructions")
+    st.header("Instructions")
     st.markdown("""
-    1. Upload a clear potato leaf image.  
-    2. The model classifies it as Early Blight, Late Blight, or Healthy.  
-    3. Get AI-powered actionable advice in English + Hindi.
+    1. Upload a clear image of a potato leaf.
+    2. The model will classify it as Early Blight, Late Blight, or Healthy.
+    3. Get tailored advice on management, prevention, and next steps.
     """)
     st.markdown("""
-    1. आलू के पत्ते की स्पष्ट छवि अपलोड करें।  
-    2. मॉडल इसे प्रारंभिक झुलसा, विलंबित झुलसा या स्वस्थ के रूप में वर्गीकृत करेगा।  
-    3. आपको हिंदी और अंग्रेजी में सलाह प्राप्त होगी।
+    1. आलू के पत्ते की स्पष्ट छवि अपलोड करें।
+    2. मॉडल इसे प्रारंभिक झुलसा, विलंबित झुलसा या स्वस्थ के रूप में वर्गीकृत करेगा।
+    3. प्रबंधन, रोकथाम और अगले कदमों पर अनुकूलित सलाह प्राप्त करें।
     """)
-    st.divider()
-    st.caption("🧠 Powered by TensorFlow + Google Gemini 1.5 Flash")
+    st.markdown("---")
+    st.markdown("**Model Info**")
+    st.markdown("Trained on potato disease dataset with 3 classes.")
+    st.markdown("Powered by TensorFlow & LangChain + Gemini.")
+
+# ==============================
+# Run
+# ==============================
+if __name__ == "__main__":
+    main()
