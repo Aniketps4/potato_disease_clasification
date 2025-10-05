@@ -1,21 +1,12 @@
-# Core ML
 tensorflow-cpu==2.17.0
 numpy==1.26.4
 pillow==10.4.0
 matplotlib==3.9.2
-
-# Backend APIs (optional if deploying FastAPI)
 fastapi==0.115.0
 uvicorn==0.31.0
 python-multipart==0.0.9
-
-# Streamlit UI
 streamlit==1.38.0
-
-# LangChain + GenAI
 langchain==0.3.1
 langchain-google-genai==1.0.4
-google-generativeai==0.8.3
+google-generativeai==0.5.3
 python-dotenv==1.0.1
-
-# ⚠️ Removed: tensorflow-serving-api==2.5.0 (incompatible with TF 2.17)
