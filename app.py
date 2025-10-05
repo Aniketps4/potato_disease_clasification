@@ -25,8 +25,9 @@ st.markdown("रोगों का पता लगाने और जेम�
 @st.cache_resource
 def load_potato_model():
     try:
-        model_path = r'C:\Users\anike\OneDrive\Documents\potato_di\potatoes.h5'
-        model = load_model(model_path)
+        MODEL_PATH = os.path.join(BASE_DIR, "models", "potatoes.h5")
+
+        model = load_model(MODEL_PATH)
         return model
     except Exception as e:
         st.error(f"Error loading model from {model_path}: {e}")
