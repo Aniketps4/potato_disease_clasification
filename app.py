@@ -139,7 +139,7 @@ def main():
     uploaded_file = st.file_uploader("Choose a potato leaf image...", type=["jpg", "jpeg", "png"])
     if uploaded_file is not None:
         image = Image.open(uploaded_file)
-        st.image(image, caption="Uploaded Image", use_container_width=True)
+        st.image(image, caption="Uploaded Image", use_column_width=True)
 
         with st.spinner("Detecting disease..."):
             predicted_class, confidence = predict_disease(image)
